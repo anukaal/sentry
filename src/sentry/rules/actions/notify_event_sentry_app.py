@@ -64,5 +64,8 @@ class NotifyEventSentryAppAction(EventAction):
             self.logger.info("rules.fail.no_app", extra=extra)
             pass
 
-        kwargs = {"sentry_app": app}
+        kwargs = {
+            "sentry_app": app,
+            "schema_defined_settings": self.get_option("settings"),
+        }
         yield self.future(notify_sentry_app, **kwargs)
