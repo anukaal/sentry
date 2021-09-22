@@ -90,13 +90,14 @@ class OrganizationMemberManager(BaseManager):
 
     def delete_expired(self, threshold: int) -> None:
         """Delete un-accepted member invitations that expired `threshold` days ago."""
-        self.filter(token_expires_at__lt=threshold, user_id__exact=None).exclude(email__exact=None).delete()
+        self.filter(token_expires_at__lt=threshold, user_id__exact=None).exclude(
+            email__exact=None
+        ).delete()
 
     def get_for_integration(self, integration: "Integration", actor: "User") -> QuerySet:
         """TODO(mgaeta): Use a Django join on sentry_organizationintegration."""
         return self.filter(
-            user=actor,
-            organization__in=integration.organizations.all()
+            user=actor, organization__in=integration.organizations.all()
         ).select_related("organization")
 
 
