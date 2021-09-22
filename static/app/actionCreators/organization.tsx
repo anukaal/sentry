@@ -7,27 +7,21 @@ import OrganizationActions from 'app/actions/organizationActions';
 import ProjectActions from 'app/actions/projectActions';
 import TeamActions from 'app/actions/teamActions';
 import {Client} from 'app/api';
-import ProjectsStore from 'app/stores/projectsStore';
-import TeamStore from 'app/stores/teamStore';
 import {Organization, Project, Team} from 'app/types';
 import {getPreloadedDataPromise} from 'app/utils/getPreloadedData';
 
 async function fetchOrg(
   api: Client,
   slug: string,
-  detailed: boolean,
   isInitialFetch?: boolean
 ): Promise<Organization> {
-  const detailedQueryParam = detailed ? 1 : 0;
   const org = await getPreloadedDataPromise(
-    `organization?detailed=${detailedQueryParam}`,
+    'organization',
     slug,
     () =>
       // This data should get preloaded in static/sentry/index.ejs
       // If this url changes make sure to update the preload
-      api.requestPromise(`/organizations/${slug}/`, {
-        query: {detailed: detailedQueryParam},
-      }),
+      api.requestPromise(`/organizations/${slug}/`, {query: {detailed: 0}}),
     isInitialFetch
   );
 
@@ -88,19 +82,16 @@ async function fetchProjectsAndTeams(
 }
 
 /**
- * Fetches an organization's details with an option for the detailed representation
- * with teams and projects
+ * Fetches an organization's details
  *
  * @param api A reference to the api client
  * @param slug The organization slug
- * @param detailed Whether or not the detailed org details should be retrieved
  * @param silent Should we silently update the organization (do not clear the
  *               current organization in the store)
  */
 export async function fetchOrganizationDetails(
   api: Client,
   slug: string,
-  detailed: boolean,
   silent: boolean,
   isInitialFetch?: boolean
 ) {
@@ -111,26 +102,11 @@ export async function fetchOrganizationDetails(
   }
 
   try {
-    const promises: Array<Promise<any>> = [fetchOrg(api, slug, detailed, isInitialFetch)];
-    if (!detailed) {
-      promises.push(fetchProjectsAndTeams(slug, isInitialFetch));
-    }
+    fetchOrg(api, slug, isInitialFetch);
 
-    const [org, projectsAndTeams] = await Promise.all(promises);
-
-    if (!detailed) {
-      const [projects, teams] = projectsAndTeams as [Project[], Team[]];
-      ProjectActions.loadProjects(projects);
-      TeamActions.loadTeams(teams);
-    }
-
-    if (org && detailed) {
-      // TODO(davidenwang): Change these to actions after organization.projects
-      // and organization.teams no longer exists. Currently if they were changed
-      // to actions it would cause OrganizationContext to rerender many times
-      TeamStore.loadInitialData(org.teams);
-      ProjectsStore.loadInitialData(org.projects);
-    }
+    const [projects, teams] = await fetchProjectsAndTeams(slug, isInitialFetch);
+    ProjectActions.loadProjects(projects);
+    TeamActions.loadTeams(teams);
   } catch (err) {
     if (!err) {
       return;
