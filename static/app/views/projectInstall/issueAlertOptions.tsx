@@ -2,14 +2,15 @@ import {ReactElement} from 'react';
 import * as React from 'react';
 import styled from '@emotion/styled';
 import * as Sentry from '@sentry/react';
-import isEqual from 'lodash/isEqual';
 
 import AsyncComponent from 'app/components/asyncComponent';
 import SelectControl from 'app/components/forms/selectControl';
 import PageHeading from 'app/components/pageHeading';
 import {t} from 'app/locale';
 import space from 'app/styles/space';
-import {Organization} from 'app/types';
+import {Organization, SelectValue} from 'app/types';
+import {IssueAlertRuleConditionTemplate} from 'app/types/alerts';
+import {defined} from 'app/utils';
 import withOrganization from 'app/utils/withOrganization';
 import Input from 'app/views/settings/components/forms/controls/input';
 import RadioGroup from 'app/views/settings/components/forms/controls/radioGroup';
@@ -39,6 +40,10 @@ const METRIC_CONDITION_MAP = {
 
 const DEFAULT_PLACEHOLDER_VALUE = '10';
 
+type ValidCondition =
+  | typeof EVENT_FREQUENCY_CONDITION
+  | typeof UNIQUE_USER_FREQUENCY_CONDITION;
+
 type StateUpdater = (updatedData: RequestDataFragment) => void;
 type Props = AsyncComponent['props'] & {
   organization: Organization;
@@ -46,9 +51,8 @@ type Props = AsyncComponent['props'] & {
 };
 
 type State = AsyncComponent['state'] & {
-  // TODO(ts): When we have alert conditional types, convert this
-  conditions: any;
-  intervalChoices: [string, string][] | undefined;
+  conditions: IssueAlertRuleConditionTemplate[] | undefined;
+  intervalOptions: Record<MetricValues, SelectValue<string>[]> | {};
   threshold: string;
   interval: string;
   alertSetting: string;
@@ -88,18 +92,31 @@ function getConditionFrom(
   };
 }
 
-function unpackConditions(conditions: any[]) {
-  const equalityReducer = (acc, curr) => {
-    if (!acc || !curr || !isEqual(acc, curr)) {
-      return null;
-    }
-    return acc;
-  };
+function unpackConditions(conditions: IssueAlertRuleConditionTemplate[]) {
+  const intervalOptions = conditions.reduce((combinedIntervals, condition) => {
+    const [metricValue] =
+      Object.entries(METRIC_CONDITION_MAP).find(([_, value]) => value === condition.id) ??
+      [];
+    const intervals = condition.formFields?.interval;
 
-  const intervalChoices = conditions
-    .map(condition => condition.formFields?.interval?.choices)
-    .reduce(equalityReducer);
-  return {intervalChoices, interval: intervalChoices?.[0]?.[0]};
+    if (!defined(metricValue) || !(intervals?.type === 'choice')) {
+      return combinedIntervals;
+    }
+
+    combinedIntervals[metricValue] = intervals.choices?.map(([value, label]) => ({
+      value,
+      label,
+    }));
+
+    return combinedIntervals;
+  }, {});
+
+  return {
+    intervalOptions,
+    interval: intervalOptions[MetricValues.ERRORS]
+      ? intervalOptions[MetricValues.ERRORS][0].value
+      : null,
+  };
 }
 
 class IssueAlertOptions extends AsyncComponent<Props, State> {
@@ -107,7 +124,7 @@ class IssueAlertOptions extends AsyncComponent<Props, State> {
     return {
       ...super.getDefaultState(),
       conditions: [],
-      intervalChoices: [],
+      intervalOptions: {},
       alertSetting: Actions.CREATE_ALERT_LATER.toString(),
       metric: MetricValues.ERRORS,
       interval: '',
@@ -115,12 +132,11 @@ class IssueAlertOptions extends AsyncComponent<Props, State> {
     };
   }
 
-  getAvailableMetricChoices() {
+  getAvailableMetricChoices(): SelectValue<MetricValues>[] {
     return [
-      [MetricValues.ERRORS, t('occurrences of')],
-      [MetricValues.USERS, t('users affected by')],
-    ].filter(valueDescriptionPair => {
-      const [value] = valueDescriptionPair;
+      {value: MetricValues.ERRORS, label: t('occurrences of')},
+      {value: MetricValues.USERS, label: t('users affected by')},
+    ].filter(({value}) => {
       return this.state.conditions?.some?.(
         object => object?.id === METRIC_CONDITION_MAP[value]
       );
@@ -163,14 +179,14 @@ class IssueAlertOptions extends AsyncComponent<Props, State> {
           />
           <InlineSelectControl
             value={this.state.metric}
-            choices={this.getAvailableMetricChoices()}
+            options={this.getAvailableMetricChoices()}
             onChange={metric => this.setStateAndUpdateParents({metric: metric.value})}
             data-test-id="metric-select-control"
           />
           {t('a unique error in')}
           <InlineSelectControl
             value={this.state.interval}
-            choices={this.state.intervalChoices}
+            options={this.state.intervalOptions[this.state.metric]}
             onChange={interval =>
               this.setStateAndUpdateParents({interval: interval.value})
             }
@@ -249,7 +265,7 @@ class IssueAlertOptions extends AsyncComponent<Props, State> {
 
   onLoadAllEndpointsSuccess(): void {
     const conditions = this.state.conditions?.filter?.(object =>
-      Object.values(METRIC_CONDITION_MAP).includes(object?.id)
+      Object.values(METRIC_CONDITION_MAP).includes(object?.id as ValidCondition)
     );
 
     if (!conditions || conditions.length === 0) {
@@ -259,8 +275,9 @@ class IssueAlertOptions extends AsyncComponent<Props, State> {
       return;
     }
 
-    const {intervalChoices, interval} = unpackConditions(conditions);
-    if (!intervalChoices || !interval) {
+    const {intervalOptions, interval} = unpackConditions(conditions);
+
+    if (!intervalOptions || !interval) {
       Sentry.withScope(scope => {
         scope.setExtra('props', this.props);
         scope.setExtra('state', this.state);
@@ -276,14 +293,14 @@ class IssueAlertOptions extends AsyncComponent<Props, State> {
 
     this.setStateAndUpdateParents({
       conditions,
-      intervalChoices,
+      intervalOptions,
       interval,
     });
   }
 
   renderBody(): React.ReactElement {
     const issueAlertOptionsChoices = this.getIssueAlertsChoices(
-      this.state.conditions?.length > 0
+      (this.state.conditions?.length ?? 0) > 0
     );
     return (
       <React.Fragment>
