@@ -47,8 +47,8 @@ class SlackUnlinkIdentityView(BaseView):  # type: ignore
         organization, integration, idp = get_identity_or_404(
             ExternalProviders.SLACK,
             request.user,
-            params["organization_id"],
-            params["integration_id"],
+            integration_id=params["integration_id"],
+            organization_id=params["organization_id"],
         )
 
         if request.method != "POST":

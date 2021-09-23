@@ -46,8 +46,8 @@ class MsTeamsLinkIdentityView(BaseView):
         organization, integration, idp = get_identity_or_404(
             ExternalProviders.MSTEAMS,
             request.user,
-            params["organization_id"],
-            params["integration_id"],
+            integration_id=params["integration_id"],
+            organization_id=params["organization_id"],
         )
 
         if request.method != "POST":
