@@ -8,7 +8,7 @@ import Button from 'app/components/button';
 import {SelectField, TextField} from 'app/components/forms';
 import {t} from 'app/locale';
 import space from 'app/styles/space';
-import {LightWeightOrganization} from 'app/types';
+import {Organization} from 'app/types';
 import withApi from 'app/utils/withApi';
 
 import {getSortLabel, IssueSortOptions} from './utils';
@@ -17,7 +17,7 @@ type Props = ModalRenderProps & {
   api: Client;
   query: string;
   sort?: string;
-  organization: LightWeightOrganization;
+  organization: Organization;
 };
 
 type State = {
